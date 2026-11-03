@@ -1,0 +1,237 @@
+
+import os
+import requests
+import streamlit as st
+import pandas as pd
+
+# =====================================
+# FOOTBALL ANALYTICS PRO
+# =====================================
+
+st.set_page_config(
+    page_title="Football Analytics Pro",
+    page_icon="⚽",
+    layout="wide"
+)
+
+API_KEY = os.getenv("FOOTBALL_API_KEY", "")
+
+BASE_URL = "https://v3.football.api-sports.io"
+
+HEADERS = {
+    "x-apisports-key": API_KEY
+}
+
+
+@st.cache_data(ttl=300)
+def get_api_data(endpoint, params=None):
+    if not API_KEY:
+        return None
+
+    try:
+        response = requests.get(
+            f"{BASE_URL}/{endpoint}",
+            headers=HEADERS,
+            params=params,
+            timeout=20
+        )
+
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("errors"):
+            st.error(f"API error: {data['errors']}")
+            return None
+
+        return data.get("response", [])
+
+    except requests.RequestException as error:
+        st.error(f"Verbindingsfout: {error}")
+        return None
+
+
+# =====================================
+# SIDEBAR
+# =====================================
+
+st.sidebar.title("⚽ Football Analytics Pro")
+
+page = st.sidebar.radio(
+    "Navigatie",
+    [
+        "Dashboard",
+        "Competities",
+        "Wedstrijden",
+        "Team analyse"
+    ]
+)
+
+# =====================================
+# HEADER
+# =====================================
+
+st.title("⚽ Football Analytics Pro")
+
+st.caption(
+    "Personal football analytics and statistical research dashboard"
+)
+
+if not API_KEY:
+    st.warning(
+        "FOOTBALL_API_KEY ontbreekt. "
+        "Configureer je API-key als environment variable."
+    )
+    st.stop()
+
+# =====================================
+# DASHBOARD
+# =====================================
+
+if page == "Dashboard":
+
+    st.header("Football Dashboard")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("Populaire competities")
+
+        leagues = get_api_data(
+            "leagues",
+            {"season": 2025}
+        )
+
+        if leagues:
+            for league in leagues[:10]:
+                name = league["league"]["name"]
+                country = league["country"]["name"]
+
+                st.write(f"🏆 **{name}** — {country}")
+
+    with col2:
+        st.subheader("API status")
+
+        st.success("API-verbinding actief")
+
+        st.metric(
+            "Beschikbare competities",
+            len(leagues) if leagues else 0
+        )
+
+# =====================================
+# COMPETITIES
+# =====================================
+
+elif page == "Competities":
+
+    st.header("Competitie overzicht")
+
+    season = st.selectbox(
+        "Seizoen",
+        [2025, 2024, 2023, 2022]
+    )
+
+    leagues = get_api_data(
+        "leagues",
+        {"season": season}
+    )
+
+    if leagues:
+        for item in leagues:
+
+            league = item["league"]
+            country = item["country"]
+
+            st.write(
+                f"**{league['name']}** — {country['name']}"
+            )
+
+# =====================================
+# WEDSTRIJDEN
+# =====================================
+
+elif page == "Wedstrijden":
+
+    st.header("Wedstrijdinformatie")
+
+    from datetime import date
+
+    selected_date = st.date_input(
+        "Selecteer wedstrijddatum",
+        value=date.today()
+    )
+
+    fixtures = get_api_data(
+        "fixtures",
+        {"date": selected_date.isoformat()}
+    )
+
+    if fixtures:
+
+        for fixture in fixtures:
+
+            teams = fixture["teams"]
+            goals = fixture["goals"]
+
+            home = teams["home"]["name"]
+            away = teams["away"]["name"]
+
+            home_goals = goals["home"]
+            away_goals = goals["away"]
+
+            st.write(
+                f"**{home} {home_goals if home_goals is not None else '-'}"
+                f" - {away_goals if away_goals is not None else '-'} "
+                f"{away}**"
+            )
+
+            st.caption(
+                fixture["fixture"]["status"]["long"]
+            )
+
+    else:
+        st.info("Geen wedstrijden gevonden voor deze datum.")
+
+# =====================================
+# TEAM ANALYSE
+# =====================================
+
+elif page == "Team analyse":
+
+    st.header("Team statistieken")
+
+    team_name = st.text_input(
+        "Zoek een team",
+        placeholder="Bijvoorbeeld Arsenal"
+    )
+
+    if st.button("Zoek team"):
+
+        if team_name.strip():
+
+            teams = get_api_data(
+                "teams",
+                {"search": team_name.strip()}
+            )
+
+            if teams:
+
+                for item in teams[:10]:
+
+                    team = item["team"]
+
+                    st.subheader(team["name"])
+
+                    st.write(
+                        f"Land: {item['venue']['city'] if item.get('venue') else 'Onbekend'}"
+                    )
+
+                    st.write(
+                        f"Team ID: {team['id']}"
+                    )
+
+            else:
+                st.warning("Geen teams gevonden.")
+
+st.sidebar.divider()
+st.sidebar.caption("Football Analytics Pro | Version 1.0")
